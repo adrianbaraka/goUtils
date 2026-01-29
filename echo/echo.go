@@ -1,3 +1,4 @@
+// Provides functions to print colored logs. 
 package echo
 
 import (
@@ -7,7 +8,6 @@ import (
 
 	"golang.org/x/term"
 )
-
 
 // Global vars
 const escape string = "\x1B["
@@ -41,6 +41,7 @@ const (
 	Cyan    colour = colour(escape + "96m")
 )
 
+// Log levels
 const (
 	Fatal logLevel = iota
 	Error

@@ -1,4 +1,4 @@
-module github.com/adrianbaraka/goUtils
+module github.com/adrianbaraka/goutils
 
 go 1.25.5
 
