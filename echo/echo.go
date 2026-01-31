@@ -1,10 +1,11 @@
-// Provides functions to print colored logs. 
+// Provides functions to print colored logs.
 package echo
 
 import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"golang.org/x/term"
 )
@@ -13,17 +14,18 @@ import (
 const escape string = "\x1B["
 const reset string = escape + "0m"
 
-type colour string
-type logLevel int
+type Colour string
+type LogLevel int
 
 type logger struct {
-	level    logLevel
+	level    LogLevel
 	useColor bool
 	out      io.Writer
+	mu       sync.Mutex // ensure order is maintained if logging through go routines
 }
 
 // Returns a new logger with log level functionality.
-func NewLogger(l logLevel, out io.Writer) *logger {
+func NewLogger(l LogLevel, out io.Writer) *logger {
 	return &logger{
 		level:    l,
 		useColor: shouldColor(out),
@@ -33,17 +35,18 @@ func NewLogger(l logLevel, out io.Writer) *logger {
 
 // colors
 const (
-	Red     colour = colour(escape + "38;5;196m")
-	Green   colour = colour(escape + "92m")
-	Yellow  colour = colour(escape + "93m")
-	Blue    colour = colour(escape + "38;5;27m")
-	Magenta colour = colour(escape + "95m")
-	Cyan    colour = colour(escape + "96m")
+	Red          Colour = Colour(escape + "38;5;196m")
+	Green        Colour = Colour(escape + "92m")
+	Yellow       Colour = Colour(escape + "93m")
+	Blue         Colour = Colour(escape + "38;5;27m")
+	Magenta      Colour = Colour(escape + "95m")
+	Cyan         Colour = Colour(escape + "96m")
+	DefaultColor Colour = Colour("")
 )
 
 // Log levels
 const (
-	Fatal logLevel = iota
+	Fatal LogLevel = iota
 	Error
 	Warn
 	Info
@@ -72,38 +75,46 @@ func shouldColor(w io.Writer) bool {
 // --------------------------------------------------------------------------------------------------
 
 // Main function that handles the logic
-func (l *logger) log(color colour, level logLevel, w io.Writer, format string, a ...any) (int, error) {
+func (l *logger) log(color Colour, level LogLevel, w io.Writer, format string, a ...any) (int, error) {
 	if level > l.level {
 		return 0, nil
 	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	var n int
+	var err error
 	// TODO add time
 	if l.useColor {
-		fmt.Fprintf(w, "%v", color) // color
-		fmt.Fprintf(w, format, a...)
-		return fmt.Fprintf(w, "%v", reset) // reset
+		fmt.Fprint(w, string(color)) // color
+		n, err = fmt.Fprintf(w, format, a...)
+		fmt.Fprint(w, string(reset)) // reset
+
+		return n, err
 	}
 	return fmt.Fprintf(w, format, a...)
 }
 
 // Fechof formats and writes colored output to the provided writer with log level filtering. Overrides the initialized writer
-func (l *logger) Fechof(color colour, level logLevel, w io.Writer, format string, a ...any) (int, error) {
+func (l *logger) Fechof(color Colour, level LogLevel, w io.Writer, format string, a ...any) (int, error) {
 	return l.log(color, level, w, format, a...)
 }
 
 // Fecholn writes colored output with a newline to the provided writer with log level filtering. Overrides the initialized writer
-func (l *logger) Fecholn(color colour, level logLevel, w io.Writer, a ...any) (int, error) {
+func (l *logger) Fecholn(color Colour, level LogLevel, w io.Writer, a ...any) (int, error) {
 	msg := fmt.Sprintln(a...)
 	return l.log(color, level, w, "%v", msg)
 }
 
 // Echoln writes colored output with a newline to configured writer with log level filtering.
-func (l *logger) Echoln(color colour, level logLevel, a ...any) (int, error) {
+func (l *logger) Echoln(color Colour, level LogLevel, a ...any) (int, error) {
 	msg := fmt.Sprintln(a...)
 	return l.log(color, level, l.out, "%v", msg)
 }
 
 // Echof formats and writes colored output to configured writer with log level filtering.
-func (l *logger) Echof(color colour, level logLevel, format string, a ...any) (int, error) {
+func (l *logger) Echof(color Colour, level LogLevel, format string, a ...any) (int, error) {
 	return l.log(color, level, l.out, format, a...)
 }
 
@@ -131,29 +142,29 @@ func (l *logger) Error(a ...any) {
 
 // Just generic no logger is needed
 // main function for the generic ones
-func log(color colour, w io.Writer, format string, a ...any) (int, error) {
+func log(color Colour, w io.Writer, format string, a ...any) (int, error) {
 	l := NewLogger(Info, w)
 	return l.log(color, Info, w, format, a...)
 }
 
 // Fechof formats and writes colored output to the provided writer.
-func Fechof(color colour, w io.Writer, format string, a ...any) (int, error) {
+func Fechof(color Colour, w io.Writer, format string, a ...any) (int, error) {
 	return log(color, w, format, a...)
 }
 
 // Fecholn writes colored output with a newline to the provided writer.
-func Fecholn(color colour, w io.Writer, a ...any) (int, error) {
+func Fecholn(color Colour, w io.Writer, a ...any) (int, error) {
 	msg := fmt.Sprintln(a...)
 	return log(color, w, "%v", msg)
 }
 
 // Echoln writes colored output with a newline to stdout.
-func Echoln(color colour, a ...any) (int, error) {
+func Echoln(color Colour, a ...any) (int, error) {
 	msg := fmt.Sprintln(a...)
 	return log(color, os.Stdout, "%v", msg)
 }
 
 // Echof formats and writes colored output to stdout.
-func Echof(color colour, format string, a ...any) (int, error) {
+func Echof(color Colour, format string, a ...any) (int, error) {
 	return log(color, os.Stdout, format, a...)
 }
